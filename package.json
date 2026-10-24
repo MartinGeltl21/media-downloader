@@ -1,0 +1,48 @@
+{
+  "name": "media-downloader",
+  "version": "1.0.0",
+  "description": "Windows app and local web app that saves links as MP4, MP3, or WAV using yt-dlp and ffmpeg",
+  "main": "desktop/main.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "app": "electron .",
+    "package": "node scripts/package.js",
+    "release": "node scripts/package.js --zip",
+    "install-app": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-windows.ps1",
+    "check": "node --check server.js && node --check public/app.js && node --check desktop/main.js && node --check desktop/preload.js && node --check desktop/system.js && node --check scripts/package.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MartinGeltl21/media-downloader.git"
+  },
+  "homepage": "https://github.com/MartinGeltl21/media-downloader#readme",
+  "bugs": {
+    "url": "https://github.com/MartinGeltl21/media-downloader/issues"
+  },
+  "keywords": [
+    "downloader",
+    "yt-dlp",
+    "ffmpeg",
+    "mp3",
+    "mp4",
+    "electron",
+    "windows"
+  ],
+  "author": "MartinGeltl21",
+  "contributors": [
+    "Leonxlnx"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "yt-dlp-wrap": "^2.3.12"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^44.9.3"
+  }
+}
