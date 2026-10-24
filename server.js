@@ -108,19 +108,44 @@ async function ensureDirectories() {
   ]);
 }
 
+// Apps started from the macOS Finder or a Linux desktop get a minimal PATH without Homebrew or Snap,
+// so these folders are searched as well.
+const EXTRA_BIN_DIRS = process.platform === 'win32'
+  ? []
+  : ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/snap/bin', '/opt/local/bin'];
+
 function resolveCommandOnPath(command) {
   try {
     const output = execFileSync(process.platform === 'win32' ? 'where.exe' : 'which', [command], {
       encoding: 'utf8',
       windowsHide: true,
     });
-    return output
+    const resolved = output
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .find(Boolean) || null;
+      .find(Boolean);
+    if (resolved) {
+      return resolved;
+    }
   } catch {
-    return null;
+    // Not on PATH; fall through to the usual install folders.
   }
+
+  return EXTRA_BIN_DIRS
+    .map((directory) => path.join(directory, command))
+    .find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+function getFfmpegInstallHint() {
+  if (process.platform === 'darwin') {
+    return 'brew install ffmpeg';
+  }
+
+  if (process.platform === 'linux') {
+    return 'sudo apt install ffmpeg';
+  }
+
+  return 'winget install Gyan.FFmpeg';
 }
 
 function resolveFfmpegState() {
@@ -220,16 +245,43 @@ async function deliverOutput(job) {
   job.outputName = path.basename(targetPath);
 }
 
+// The standalone builds need no Python, unlike the generic yt-dlp file for macOS and Linux.
+function getYtDlpAssetName() {
+  if (process.platform === 'win32') {
+    return 'yt-dlp.exe';
+  }
+
+  if (process.platform === 'darwin') {
+    return 'yt-dlp_macos';
+  }
+
+  return process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
+}
+
+async function downloadYtDlp() {
+  const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${getYtDlpAssetName()}`;
+  const response = await fetch(url);
+  if (!response.ok || !response.body) {
+    throw new Error(`Could not download yt-dlp (${response.status} ${response.statusText}).`);
+  }
+
+  const partialPath = `${YT_DLP_PATH}.download`;
+  await new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(partialPath);
+    output.on('error', reject).on('finish', resolve);
+    Readable.fromWeb(response.body).on('error', reject).pipe(output);
+  });
+  await fsp.chmod(partialPath, 0o755);
+  await fsp.rename(partialPath, YT_DLP_PATH);
+}
+
 async function ensureYtDlpBinary() {
   if (!ytDlpReadyPromise) {
     ytDlpReadyPromise = (async () => {
       await ensureDirectories();
 
       if (!fs.existsSync(YT_DLP_PATH)) {
-        await YTDlpWrap.downloadFromGithub(YT_DLP_PATH, undefined, process.platform);
-        if (process.platform !== 'win32') {
-          await fsp.chmod(YT_DLP_PATH, 0o755);
-        }
+        await downloadYtDlp();
       }
 
       const ytDlp = createYtDlp();
@@ -712,6 +764,7 @@ app.get('/api/health', async (_request, response) => {
     engine: ytDlpState,
     ffmpegPath: ffmpegState.executable,
     ffmpegFound: ffmpegState.found,
+    ffmpegInstallHint: getFfmpegInstallHint(),
   });
 });
 

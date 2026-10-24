@@ -269,7 +269,8 @@ async function checkFfmpeg() {
   try {
     const health = await fetchJson('/api/health');
     if (health.ffmpegFound === false) {
-      setJobStatus('ffmpeg is missing. Install it (winget install Gyan.FFmpeg) and restart the app.', 'error');
+      const hint = health.ffmpegInstallHint ? ` (${health.ffmpegInstallHint})` : '';
+      setJobStatus(`ffmpeg is missing. Install it${hint} and restart the app.`, 'error');
     }
   } catch {
     // The status line already reports request errors when the user starts a download.

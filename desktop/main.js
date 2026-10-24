@@ -4,11 +4,17 @@ const path = require('path');
 const { app, BrowserWindow, Menu, Tray, clipboard, dialog, ipcMain, nativeTheme, shell } = require('electron');
 const system = require('./system');
 
-// A fixed name keeps settings in %APPDATA%\Downloader regardless of the package name.
+// A fixed name keeps settings in %APPDATA%\Downloader (Windows), ~/Library/Application Support/Downloader
+// (macOS), or ~/.config/Downloader (Linux), regardless of the package name.
 app.setPath('userData', path.join(app.getPath('appData'), 'Downloader'));
 
 const ROOT_DIR = path.join(__dirname, '..');
-const ICON_PATH = path.join(__dirname, 'icon.ico');
+const ICON_PATH = path.join(__dirname, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+// macOS shows a black-and-white template image in the menu bar and recolors it for light and dark mode.
+const TRAY_ICON_PATH = {
+  win32: ICON_PATH,
+  darwin: path.join(__dirname, 'trayTemplate.png'),
+}[process.platform] || path.join(__dirname, 'tray.png');
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
 
 const PRESETS = ['mp4', 'mp3', 'wav'];
@@ -177,12 +183,16 @@ async function updateTrayMenu() {
     { label: 'Open Downloader', click: () => showWindow() },
     { type: 'separator' },
     {
-      label: 'Start with Windows',
+      label: system.getAutostartLabel(),
       type: 'checkbox',
       checked: autostart,
       enabled: supported,
-      click: (item) => {
-        system.setAutostart(item.checked);
+      click: async (item) => {
+        try {
+          await system.setAutostart(item.checked);
+        } catch (error) {
+          dialog.showErrorBox('Downloader', `Could not change autostart: ${error.message}`);
+        }
         void updateTrayMenu();
       },
     },
@@ -195,7 +205,7 @@ async function updateTrayMenu() {
         try {
           await system.setCommands(item.checked);
         } catch (error) {
-          dialog.showErrorBox('Downloader', `Could not update PATH: ${error.message}`);
+          dialog.showErrorBox('Downloader', `Could not change the console commands: ${error.message}`);
         }
         void updateTrayMenu();
       },
@@ -206,7 +216,7 @@ async function updateTrayMenu() {
 }
 
 function createTray() {
-  tray = new Tray(ICON_PATH);
+  tray = new Tray(TRAY_ICON_PATH);
   tray.setToolTip('Downloader');
   tray.on('click', () => showWindow());
   void updateTrayMenu();
@@ -219,7 +229,7 @@ async function applySetupFlags() {
   }
 
   if (process.argv.includes('--enable-autostart')) {
-    system.setAutostart(true);
+    await system.setAutostart(true);
   }
 
   if (process.argv.includes('--enable-commands') && !await system.areCommandsEnabled()) {
@@ -270,7 +280,11 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
+  // macOS: clicking the Dock icon brings the hidden window back.
+  app.on('activate', () => showWindow());
+
   app.whenReady().then(async () => {
+    startHidden = startHidden || system.wasOpenedAtLogin();
     ensureSettings();
     registerIpc();
     await applySetupFlags().catch((error) => console.error(error));
